@@ -17,43 +17,48 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 		err         error
 	)
 
+	podName := pod.Name
+
 	if rs := kubernetes.OwningReplicaSet(pod); rs != nil {
 		annotations = &kubernetes.Annotations{}
 		if deployment := kubernetes.OwningDeployment(rs); deployment != nil {
 			annotations = kubernetes.DecodeAnnotations(deployment.Annotations)
 		}
+		if podName == "" && rs.Name != "" {
+			podName = rs.Name
+		}
 
 		if annotations.Ignore {
-			slog.Debug("ignoring pod", "name", pod.Name, "namespace", pod.Namespace)
+			slog.Debug("ignoring pod", "name", podName, "namespace", pod.Namespace)
 			return patches, nil
 		}
 
 		if !lo.Contains(config.Current.NamespaceSelector, "*") && !lo.Contains(config.Current.NamespaceSelector, pod.Namespace) {
 			if annotations.OptIn {
-				slog.Debug("namespace not in selector, but pod is opted-in", "name", pod.Name, "namespace", pod.Namespace)
+				slog.Debug("namespace not in selector, but pod is opted-in", "name", podName, "namespace", pod.Namespace)
 			} else {
-				slog.Debug("namespace not in selector, ignoring pod", "name", pod.Name, "namespace", pod.Namespace)
+				slog.Debug("namespace not in selector, ignoring pod", "name", podName, "namespace", pod.Namespace)
 				return patches, nil
 			}
 		}
 		if lo.Contains(config.Current.ExceptNamespaces, pod.Namespace) {
 			if annotations.OptIn {
-				slog.Debug("namespace in except list, but pod is opted-in", "name", pod.Name, "namespace", pod.Namespace)
+				slog.Debug("namespace in except list, but pod is opted-in", "name", podName, "namespace", pod.Namespace)
 			} else {
-				slog.Debug("namespace in except list, ignoring pod", "name", pod.Name, "namespace", pod.Namespace)
+				slog.Debug("namespace in except list, ignoring pod", "name", podName, "namespace", pod.Namespace)
 				return patches, nil
 			}
 		}
 
 		siblings, err = kubernetes.ReplicaSetChildren(rs, pod.Name)
 		if err != nil {
-			slog.Error("failed to get siblings of pod", "name", pod.Name, "namespace", pod.Namespace, "err", err)
+			slog.Error("failed to get siblings of pod", "name", podName, "namespace", pod.Namespace, "err", err)
 			return nil, err
 		}
 	}
 
 	if len(siblings) == 0 {
-		slog.Debug("no siblings found for pod", "name", pod.Name, "namespace", pod.Namespace)
+		slog.Debug("no siblings found for pod", "name", podName, "namespace", pod.Namespace)
 		return patches, nil
 	}
 
@@ -62,7 +67,7 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 	currentNormal := len(siblings) - currentSpot
 
 	if currentNormal < expectedNormal {
-		slog.Debug("less than expected normal pods, keeping normal", "expectedNormal", expectedNormal, "currentNormal", currentNormal, "name", pod.Name, "namespace", pod.Namespace)
+		slog.Debug("less than expected normal pods, keeping normal", "expectedNormal", expectedNormal, "currentNormal", currentNormal, "name", podName, "namespace", pod.Namespace)
 		return patches, nil
 	}
 

@@ -108,7 +108,7 @@ func (a *Annotations) SpecTolerations() []corev1.Toleration {
 	for _, toleration := range a.NodeTolerations {
 		parts := strings.SplitN(toleration, "=", 2)
 		key := strings.TrimSpace(parts[0])
-		valueParts := strings.SplitN(key, ":", 2)
+		valueParts := strings.SplitN(parts[1], ":", 2)
 		operator := corev1.TolerationOpEqual
 		if valueParts[0] == "" {
 			operator = corev1.TolerationOpExists
