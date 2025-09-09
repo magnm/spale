@@ -61,7 +61,7 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 		return patches, nil
 	}
 
-	expectedNormal, _ := annotations.ExpectedCounts(len(siblings) + 1)
+	_, expectedNormal := annotations.ExpectedCounts(len(siblings) + 1)
 	currentSpot := lo.CountBy(siblings, annotations.PodIsSpot)
 	currentNormal := len(siblings) - currentSpot
 
