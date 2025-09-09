@@ -1,0 +1,6 @@
+
+resources:
+  - service-account.yaml
+  - webhook.yaml
+  - deployment.yaml
+  - service.yaml

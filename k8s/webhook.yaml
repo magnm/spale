@@ -1,0 +1,27 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: spale
+webhooks:
+- name: spale.kube-system.svc
+  admissionReviewVersions:
+  - v1
+  clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJPRENCNjZBREFnRUNBaFJvQ0ZGNEFDUWJGc1JMb2lBVUdhMmJDRFpGUFRBRkJnTXJaWEF3RVRFUE1BMEcKQTFVRUF3d0daR1Z6Y0c5ME1DQVhEVEkxTURVek1ESXdNVGMwTVZvWUR6SXdOVEl4TURFMU1qQXhOelF4V2pBUgpNUTh3RFFZRFZRUUREQVprWlhOd2IzUXdLakFGQmdNclpYQURJUUIvS3ZBRUhFbmlRMU9qQlVtRjE3bVFITFFKClQ4Qll1aDN6NnNVRTNLSHBXS05UTUZFd0hRWURWUjBPQkJZRUZOckE5ektqd0p2bzdPQlNnbjRRaEFESlR5cGgKTUI4R0ExVWRJd1FZTUJhQUZOckE5ektqd0p2bzdPQlNnbjRRaEFESlR5cGhNQThHQTFVZEV3RUIvd1FGTUFNQgpBZjh3QlFZREsyVndBMEVBY1NXZXQvQzZka3VPU2dlaHVERU5rZzd6QUxOcDZ0RjRYc2Vjb0tPS0ZiaThKSGNKCld1cG4rU0ovY1NRVjA4ZU5JdENrTDh0YnBPNFdReXVtL3ZZekNBPT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+    service:
+      name: spale
+      namespace: kube-system
+      path: /webhook/mutate
+      port: 443
+  objectSelector:
+    matchExpressions:
+    - key: app
+      operator: NotIn
+      values:
+      - spale
+  rules:
+  - operations: [ "CREATE", "UPDATE" ]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  sideEffects: NoneOnDryRun

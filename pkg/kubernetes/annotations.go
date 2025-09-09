@@ -13,6 +13,7 @@ import (
 const (
 	AnnotationRatio       string = "spale/ratio"
 	AnnotationIgnore      string = "spale/ignore"
+	AnnotationOptIn       string = "spale/opt-in"
 	AnnotationNodeLabels  string = "spale/node-labels"
 	AnnotationTolerations string = "spale/tolerations"
 )
@@ -20,6 +21,7 @@ const (
 type Annotations struct {
 	Ratio           string
 	Ignore          bool
+	OptIn           bool
 	NodeLabels      []string
 	NodeTolerations []string
 }
@@ -31,6 +33,7 @@ func DecodeAnnotations(annotations map[string]string) *Annotations {
 	return &Annotations{
 		Ratio:           lo.CoalesceOrEmpty(annotations[AnnotationRatio], config.Current.SpotRatio),
 		Ignore:          annotations[AnnotationIgnore] == "true",
+		OptIn:           annotations[AnnotationOptIn] == "true",
 		NodeLabels:      lo.CoalesceSliceOrEmpty(strings.Split(annotations[AnnotationNodeLabels], ","), config.Current.SpotNodeLabels),
 		NodeTolerations: lo.CoalesceSliceOrEmpty(strings.Split(annotations[AnnotationTolerations], ","), config.Current.SpotNodeTolerations),
 	}
