@@ -7,8 +7,8 @@ Annotations can be placed on Deployments:
 - `spale/ignore: true` - Ignore this deployment entirely
 - `spale/opt-in: true` - Opt-in this deployment regardless of selectors
 - `spale/ratio: "3:1"` - The ratio of spot to normal pods
-- `spale/node-labels: "node-role.kubernetes.io/spot: true"` - Node labels to apply to spot pods, in addition to the default ones.
-- `spale/tolerations: "node-role.kubernetes.io/spot: NoSchedule"` - Tolerations to apply to spot pods, in addition to the default ones.
+- `spale/node-labels: "node-role.kubernetes.io/spot: true"` - Node labels to apply to spot pods instead of the default ones.
+- `spale/tolerations: "node-role.kubernetes.io/spot: NoSchedule"` - Tolerations to apply to spot pods instead of the default ones.
 
 
 ## Development

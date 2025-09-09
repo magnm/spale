@@ -31,12 +31,20 @@ func DecodeAnnotations(annotations map[string]string) *Annotations {
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
+	nodeLabels := config.Current.SpotNodeLabels
+	if annotations[AnnotationNodeLabels] != "" {
+		nodeLabels = strings.Split(annotations[AnnotationNodeLabels], ",")
+	}
+	nodeTolerations := config.Current.SpotNodeTolerations
+	if annotations[AnnotationTolerations] != "" {
+		nodeTolerations = strings.Split(annotations[AnnotationTolerations], ",")
+	}
 	return &Annotations{
 		Ratio:           lo.CoalesceOrEmpty(annotations[AnnotationRatio], config.Current.SpotRatio),
 		Ignore:          annotations[AnnotationIgnore] == "true",
 		OptIn:           annotations[AnnotationOptIn] == "true",
-		NodeLabels:      lo.CoalesceSliceOrEmpty(strings.Split(annotations[AnnotationNodeLabels], ","), config.Current.SpotNodeLabels),
-		NodeTolerations: lo.CoalesceSliceOrEmpty(strings.Split(annotations[AnnotationTolerations], ","), config.Current.SpotNodeTolerations),
+		NodeLabels:      nodeLabels,
+		NodeTolerations: nodeTolerations,
 	}
 }
 
@@ -109,7 +117,10 @@ func (a *Annotations) SpecTolerations() []corev1.Toleration {
 	for _, toleration := range a.NodeTolerations {
 		parts := strings.SplitN(toleration, "=", 2)
 		key := strings.TrimSpace(parts[0])
-		slog.Debug("parsing toleration", "toleration", toleration, "key", key)
+		if len(parts) != 2 {
+			slog.Warn("parsing toleration failed, expected <key>=<value>:<effect>", "toleration", toleration, "key", key)
+			continue
+		}
 		valueParts := strings.SplitN(parts[1], ":", 2)
 		operator := corev1.TolerationOpEqual
 		if valueParts[0] == "" || valueParts[0] == "*" {
