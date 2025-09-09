@@ -11,7 +11,7 @@ webhooks:
     service:
       name: spale
       namespace: kube-system
-      path: /webhook/mutate
+      path: /mutate
       port: 443
   objectSelector:
     matchExpressions:
