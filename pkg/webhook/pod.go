@@ -61,17 +61,47 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 		return patches, nil
 	}
 
-	_, expectedNormal := annotations.ExpectedCounts(len(siblings) + 1)
+	currentTotal := len(siblings) + 1
+	_, expectedNormal := annotations.ExpectedCounts(currentTotal)
 	currentSpot := lo.CountBy(siblings, annotations.PodIsSpot)
 	currentNormal := len(siblings) - currentSpot
+	logger.Debug("pod siblings", "currentTotal", currentTotal, "currentNormal", currentNormal, "currentSpot", currentSpot, "ratio", annotations.Ratio, "expectedNormal", expectedNormal)
 
-	logger.Debug("pod siblings", "total", len(siblings)+1, "currentNormal", currentNormal, "currentSpot", currentSpot, "ratio", annotations.Ratio, "expectedNormal", expectedNormal)
+	deletionCost := 0
+	// If there's a lot of normal pods, allow normal pods to be deleted with same
+	// priority as spot. Otherwise spot gets lower cost.
+	if float32(currentNormal) > float32(currentTotal)*0.2 {
+		deletionCost = -1
+	} else if currentNormal >= expectedNormal {
+		deletionCost = -1
+	}
+
+	if deletionCost != 0 {
+		logger.Debug("setting pod deletion cost", "deletionCost", deletionCost)
+		if pod.Annotations == nil {
+			patches = append(patches, kubernetes.PatchOperation{
+				Op:    "add",
+				Path:  "/metadata/annotations",
+				Value: map[string]string{},
+			})
+		}
+		patches = append(patches, kubernetes.PatchOperation{
+			Op:    "add",
+			Path:  "/metadata/annotations/controller.kubernetes.io~1pod-deletion-cost",
+			Value: "-1",
+		})
+	}
+
+	if dryRun {
+		return []kubernetes.PatchOperation{}, nil
+	}
+
 	if currentNormal < expectedNormal {
 		logger.Debug("less than expected normal pods, keeping normal", "expectedNormal", expectedNormal, "currentNormal", currentNormal)
 		return patches, nil
 	}
 
-	// Make sure affinity and tolerations top levels are present
+	// Make sure top levels are present
 	if pod.Spec.Affinity == nil {
 		patches = append(patches, kubernetes.PatchOperation{
 			Op:    "add",
@@ -79,7 +109,6 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 			Value: &corev1.Affinity{},
 		})
 	}
-
 	if pod.Spec.Tolerations == nil {
 		patches = append(patches, kubernetes.PatchOperation{
 			Op:    "add",
@@ -99,10 +128,6 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 		Path:  "/spec/tolerations",
 		Value: annotations.SpecTolerations(),
 	})
-
-	if dryRun {
-		return []kubernetes.PatchOperation{}, nil
-	}
 
 	return patches, nil
 }
