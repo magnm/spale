@@ -16,7 +16,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to decode pod mutation request", http.StatusBadRequest)
 		return
 	}
-	slog.Debug("admission review", "version", review.APIVersion)
+	slog.Debug("admission review", "version", review.APIVersion, "name", pod.Name, "namespace", pod.Namespace, "dryRun", review.Request.DryRun)
 
 	patches, err := patchesForPod(pod, *review.Request.DryRun)
 	if err != nil {

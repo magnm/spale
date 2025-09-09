@@ -124,6 +124,10 @@ func (a *Annotations) SpecTolerations() []corev1.Toleration {
 }
 
 func (a *Annotations) PodIsSpot(pod corev1.Pod) bool {
+	if pod.Spec.Affinity == nil || pod.Spec.Affinity.NodeAffinity == nil || pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		return false
+	}
+
 	nodeTerms := pod.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
 
 	for _, term := range nodeTerms {
