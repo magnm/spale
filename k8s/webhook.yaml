@@ -25,3 +25,4 @@ webhooks:
     apiVersions: ["v1"]
     resources: ["pods"]
   sideEffects: NoneOnDryRun
+  failurePolicy: Ignore
