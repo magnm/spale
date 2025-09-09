@@ -110,13 +110,15 @@ func (a *Annotations) SpecTolerations() []corev1.Toleration {
 		key := strings.TrimSpace(parts[0])
 		valueParts := strings.SplitN(parts[1], ":", 2)
 		operator := corev1.TolerationOpEqual
-		if valueParts[0] == "" {
+		if valueParts[0] == "" || valueParts[0] == "*" {
 			operator = corev1.TolerationOpExists
+			valueParts[0] = ""
 		}
 		effect := corev1.TaintEffect(valueParts[1])
 		tolerations = append(tolerations, corev1.Toleration{
 			Key:      key,
 			Operator: operator,
+			Value:    valueParts[0],
 			Effect:   effect,
 		})
 	}
