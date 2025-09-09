@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -28,7 +29,7 @@ type Annotations struct {
 
 func DecodeAnnotations(annotations map[string]string) *Annotations {
 	if annotations == nil {
-		return nil
+		annotations = map[string]string{}
 	}
 	return &Annotations{
 		Ratio:           lo.CoalesceOrEmpty(annotations[AnnotationRatio], config.Current.SpotRatio),
@@ -108,6 +109,7 @@ func (a *Annotations) SpecTolerations() []corev1.Toleration {
 	for _, toleration := range a.NodeTolerations {
 		parts := strings.SplitN(toleration, "=", 2)
 		key := strings.TrimSpace(parts[0])
+		slog.Debug("parsing toleration", "toleration", toleration, "key", key)
 		valueParts := strings.SplitN(parts[1], ":", 2)
 		operator := corev1.TolerationOpEqual
 		if valueParts[0] == "" || valueParts[0] == "*" {
