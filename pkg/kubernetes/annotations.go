@@ -31,6 +31,10 @@ func DecodeAnnotations(annotations map[string]string) *Annotations {
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
+	ratio := config.Current.SpotRatio
+	if annotations[AnnotationRatio] != "" {
+		ratio = annotations[AnnotationRatio]
+	}
 	nodeLabels := config.Current.SpotNodeLabels
 	if annotations[AnnotationNodeLabels] != "" {
 		nodeLabels = strings.Split(annotations[AnnotationNodeLabels], ",")
@@ -40,7 +44,7 @@ func DecodeAnnotations(annotations map[string]string) *Annotations {
 		nodeTolerations = strings.Split(annotations[AnnotationTolerations], ",")
 	}
 	return &Annotations{
-		Ratio:           lo.CoalesceOrEmpty(annotations[AnnotationRatio], config.Current.SpotRatio),
+		Ratio:           ratio,
 		Ignore:          annotations[AnnotationIgnore] == "true",
 		OptIn:           annotations[AnnotationOptIn] == "true",
 		NodeLabels:      nodeLabels,
