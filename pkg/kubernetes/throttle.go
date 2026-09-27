@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	corev1 "k8s.io/api/core/v1"
+	resourcehelper "k8s.io/component-helpers/resource"
 	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
 	"k8s.io/component-helpers/scheduling/corev1/nodeaffinity"
 )
@@ -15,7 +16,7 @@ type ErrNoNodesAvailable struct {
 }
 
 func (e *ErrNoNodesAvailable) Error() string {
-	return fmt.Sprintf("all %d candidate nodes have %d or more pods starting, try again later", e.Candidates, e.Limit)
+	return fmt.Sprintf("all %d nodes with room for this pod have %d or more pods starting, try again later", e.Candidates, e.Limit)
 }
 
 func PodIsStarting(pod *corev1.Pod) bool {
@@ -55,35 +56,57 @@ func nodeIsReady(node *corev1.Node) bool {
 	return false
 }
 
-// BusyCandidateNodes returns the nodes the pod could schedule on that already have limit or more pods starting.
+// BusyCandidateNodes returns the nodes the pod could schedule on (and has room on) that already have limit or more pods starting.
 func BusyCandidateNodes(pod *corev1.Pod, limit int) ([]string, error) {
 	nodes, err := Nodes()
 	if err != nil {
 		return nil, err
 	}
-	pods, err := ManagedPods()
+	pods, err := BoundPods()
 	if err != nil {
 		return nil, err
 	}
 	return busyCandidateNodes(pod, nodes, pods, limit)
 }
 
+type nodeUsage struct {
+	requests corev1.ResourceList
+	pods     int
+	starting int
+}
+
 func busyCandidateNodes(pod *corev1.Pod, nodes []*corev1.Node, pods []*corev1.Pod, limit int) ([]string, error) {
-	starting := map[string]int{}
+	usage := map[string]*nodeUsage{}
 	for _, p := range pods {
-		if PodIsStarting(p) {
-			starting[p.Spec.NodeName]++
+		u := usage[p.Spec.NodeName]
+		if u == nil {
+			u = &nodeUsage{requests: corev1.ResourceList{}}
+			usage[p.Spec.NodeName] = u
+		}
+		u.pods++
+		for name, q := range resourcehelper.PodRequests(p, resourcehelper.PodResourcesOptions{}) {
+			total := u.requests[name]
+			total.Add(q)
+			u.requests[name] = total
+		}
+		if p.Labels[LabelManaged] == "true" && PodIsStarting(p) {
+			u.starting++
 		}
 	}
 
+	podRequests := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{})
 	candidates := 0
 	var busy []string
 	for _, node := range nodes {
-		if !NodeFitsPod(pod, node) {
+		u := usage[node.Name]
+		if u == nil {
+			u = &nodeUsage{}
+		}
+		if !NodeFitsPod(pod, node) || !nodeHasRoom(node, u, podRequests) {
 			continue
 		}
 		candidates++
-		if starting[node.Name] >= limit {
+		if u.starting >= limit {
 			busy = append(busy, node.Name)
 		}
 	}
@@ -94,6 +117,28 @@ func busyCandidateNodes(pod *corev1.Pod, nodes []*corev1.Node, pods []*corev1.Po
 	}
 	slices.Sort(busy)
 	return busy, nil
+}
+
+func nodeHasRoom(node *corev1.Node, usage *nodeUsage, requests corev1.ResourceList) bool {
+	allocatable := node.Status.Allocatable
+	if maxPods, ok := allocatable[corev1.ResourcePods]; ok && int64(usage.pods+1) > maxPods.Value() {
+		return false
+	}
+	for name, req := range requests {
+		if req.IsZero() {
+			continue
+		}
+		alloc, ok := allocatable[name]
+		if !ok {
+			return false
+		}
+		free := alloc.DeepCopy()
+		free.Sub(usage.requests[name])
+		if free.Cmp(req) < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // WithExcludedNodes returns a copy of affinity that additionally requires the node not to be one of nodeNames.

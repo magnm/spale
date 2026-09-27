@@ -17,8 +17,8 @@ import (
 const LabelManaged = "spale/managed"
 
 var (
-	managedPodLister corelisters.PodLister
-	nodeLister       corelisters.NodeLister
+	boundPodLister corelisters.PodLister
+	nodeLister     corelisters.NodeLister
 )
 
 func StartInformers(ctx context.Context) error {
@@ -30,7 +30,7 @@ func StartInformers(ctx context.Context) error {
 	// Separate factories, since list option tweaks apply to every informer in a factory
 	podFactory := informers.NewSharedInformerFactoryWithOptions(cs, 0,
 		informers.WithTweakListOptions(func(o *metav1.ListOptions) {
-			o.LabelSelector = LabelManaged + "=true"
+			o.FieldSelector = "spec.nodeName!=,status.phase!=Succeeded,status.phase!=Failed"
 		}),
 		informers.WithTransform(trimPod),
 	)
@@ -59,16 +59,17 @@ func StartInformers(ctx context.Context) error {
 		}
 	}
 
-	managedPodLister = pods.Lister()
+	boundPodLister = pods.Lister()
 	nodeLister = nodes.Lister()
 	return nil
 }
 
-func ManagedPods() ([]*corev1.Pod, error) {
-	if managedPodLister == nil {
+// BoundPods returns all non-terminated pods that are assigned to a node.
+func BoundPods() ([]*corev1.Pod, error) {
+	if boundPodLister == nil {
 		return nil, errors.New("pod informer not started")
 	}
-	return managedPodLister.List(labels.Everything())
+	return boundPodLister.List(labels.Everything())
 }
 
 func Nodes() ([]*corev1.Node, error) {
@@ -83,17 +84,33 @@ func trimPod(obj any) (any, error) {
 	if !ok {
 		return obj, nil
 	}
+	var podLabels map[string]string
+	if v, ok := pod.Labels[LabelManaged]; ok {
+		podLabels = map[string]string{LabelManaged: v}
+	}
+	containers := make([]corev1.Container, len(pod.Spec.Containers))
+	for i, c := range pod.Spec.Containers {
+		containers[i] = corev1.Container{Name: c.Name, Resources: c.Resources}
+	}
+	initContainers := make([]corev1.Container, len(pod.Spec.InitContainers))
+	for i, c := range pod.Spec.InitContainers {
+		initContainers[i] = corev1.Container{Name: c.Name, Resources: c.Resources, RestartPolicy: c.RestartPolicy}
+	}
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              pod.Name,
 			Namespace:         pod.Namespace,
 			UID:               pod.UID,
 			ResourceVersion:   pod.ResourceVersion,
-			Labels:            pod.Labels,
+			Labels:            podLabels,
 			DeletionTimestamp: pod.DeletionTimestamp,
 		},
 		Spec: corev1.PodSpec{
-			NodeName: pod.Spec.NodeName,
+			NodeName:       pod.Spec.NodeName,
+			Overhead:       pod.Spec.Overhead,
+			Resources:      pod.Spec.Resources,
+			Containers:     containers,
+			InitContainers: initContainers,
 		},
 		Status: corev1.PodStatus{
 			Phase:      pod.Status.Phase,
