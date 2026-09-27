@@ -13,6 +13,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"
 	"github.com/magnm/spale/config"
+	"github.com/magnm/spale/pkg/kubernetes"
 	"github.com/magnm/spale/pkg/webhook"
 )
 
@@ -26,6 +27,16 @@ func Run() {
 	config.Current = cfg
 
 	setupLogging(cfg)
+
+	informerCtx, stopInformers := context.WithCancel(context.Background())
+	defer stopInformers()
+	if cfg.MaxStartingPodsPerNode > 0 {
+		if err := kubernetes.StartInformers(informerCtx); err != nil {
+			slog.Error("failed to start informers", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("startup throttle enabled", "maxStartingPodsPerNode", cfg.MaxStartingPodsPerNode)
+	}
 
 	router := chi.NewRouter()
 	router.Post("/mutate", webhook.HandleRequest)

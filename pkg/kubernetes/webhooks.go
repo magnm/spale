@@ -9,6 +9,7 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 )
@@ -71,4 +72,20 @@ func EncodeMutationPatches(review *admissionv1.AdmissionReview, patches []PatchO
 	}
 
 	return response, nil
+}
+
+func EncodeRejection(review *admissionv1.AdmissionReview, message string) *admissionv1.AdmissionReview {
+	return &admissionv1.AdmissionReview{
+		TypeMeta: review.TypeMeta,
+		Response: &admissionv1.AdmissionResponse{
+			UID:     review.Request.UID,
+			Allowed: false,
+			Result: &metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    http.StatusTooManyRequests,
+				Reason:  metav1.StatusReasonTooManyRequests,
+				Message: message,
+			},
+		},
+	}
 }

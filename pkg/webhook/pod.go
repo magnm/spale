@@ -6,10 +6,11 @@ import (
 	"github.com/magnm/spale/config"
 	"github.com/magnm/spale/pkg/kubernetes"
 	"github.com/samber/lo"
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
-func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, error) {
+func patchesForPod(pod *corev1.Pod, operation admissionv1.Operation, dryRun bool) ([]kubernetes.PatchOperation, error) {
 	var (
 		patches     []kubernetes.PatchOperation
 		siblings    []corev1.Pod
@@ -63,9 +64,12 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 		siblings = append(siblings, *pod)
 	}
 
+	// Pods with a preset nodeName bypass the scheduler, so node exclusion can't apply
+	throttle := operation == admissionv1.Create && !dryRun && pod.Spec.NodeName == "" && config.Current.MaxStartingPodsPerNode > 0
+
 	if len(siblings) == 0 {
 		logger.Debug("no siblings found for pod")
-		return patches, nil
+		return schedulingPatches(logger, pod, patches, annotations, false, throttle)
 	}
 
 	currentTotal := len(siblings) + 1
@@ -105,6 +109,58 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 
 	if currentNormal < expectedNormal {
 		logger.Debug("less than expected normal pods, keeping normal", "expectedNormal", expectedNormal, "currentNormal", currentNormal)
+		return schedulingPatches(logger, pod, patches, annotations, false, throttle)
+	}
+
+	return schedulingPatches(logger, pod, patches, annotations, true, throttle)
+}
+
+// schedulingPatches appends the node affinity/toleration patches, excluding nodes busy starting other pods if throttle is set.
+func schedulingPatches(logger *slog.Logger, pod *corev1.Pod, patches []kubernetes.PatchOperation, annotations *kubernetes.Annotations, spot, throttle bool) ([]kubernetes.PatchOperation, error) {
+	var nodeAffinity *corev1.NodeAffinity
+	if pod.Spec.Affinity != nil {
+		nodeAffinity = pod.Spec.Affinity.NodeAffinity
+	}
+	tolerations := pod.Spec.Tolerations
+	if spot {
+		nodeAffinity = annotations.SpecAffinity()
+		tolerations = annotations.SpecTolerations()
+	}
+
+	var busyNodes []string
+	if throttle {
+		finalPod := pod.DeepCopy()
+		if finalPod.Spec.Affinity == nil {
+			finalPod.Spec.Affinity = &corev1.Affinity{}
+		}
+		finalPod.Spec.Affinity.NodeAffinity = nodeAffinity
+		finalPod.Spec.Tolerations = tolerations
+
+		var err error
+		busyNodes, err = kubernetes.BusyCandidateNodes(finalPod, config.Current.MaxStartingPodsPerNode)
+		if err != nil {
+			return nil, err
+		}
+		if len(busyNodes) > 0 {
+			logger.Debug("excluding nodes with too many starting pods", "nodes", busyNodes)
+			nodeAffinity = kubernetes.WithExcludedNodes(nodeAffinity, busyNodes)
+		}
+
+		if pod.Labels == nil {
+			patches = append(patches, kubernetes.PatchOperation{
+				Op:    "add",
+				Path:  "/metadata/labels",
+				Value: map[string]string{},
+			})
+		}
+		patches = append(patches, kubernetes.PatchOperation{
+			Op:    "add",
+			Path:  "/metadata/labels/spale~1managed",
+			Value: "true",
+		})
+	}
+
+	if !spot && len(busyNodes) == 0 {
 		return patches, nil
 	}
 
@@ -116,6 +172,17 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 			Value: &corev1.Affinity{},
 		})
 	}
+	patches = append(patches, kubernetes.PatchOperation{
+		Op:    "add",
+		Path:  "/spec/affinity/nodeAffinity",
+		Value: nodeAffinity,
+	})
+
+	if !spot {
+		return patches, nil
+	}
+
+	// Set to spot
 	if pod.Spec.Tolerations == nil {
 		patches = append(patches, kubernetes.PatchOperation{
 			Op:    "add",
@@ -123,17 +190,10 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 			Value: []corev1.Toleration{},
 		})
 	}
-
-	// Set to spot
-	patches = append(patches, kubernetes.PatchOperation{
-		Op:    "add",
-		Path:  "/spec/affinity/nodeAffinity",
-		Value: annotations.SpecAffinity(),
-	})
 	patches = append(patches, kubernetes.PatchOperation{
 		Op:    "add",
 		Path:  "/spec/tolerations",
-		Value: annotations.SpecTolerations(),
+		Value: tolerations,
 	})
 
 	return patches, nil

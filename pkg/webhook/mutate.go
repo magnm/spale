@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -18,7 +19,14 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("admission review", "version", review.APIVersion, "name", pod.Name, "namespace", pod.Namespace, "dryRun", review.Request.DryRun)
 
-	patches, err := patchesForPod(pod, *review.Request.DryRun)
+	patches, err := patchesForPod(pod, review.Request.Operation, *review.Request.DryRun)
+	var noNodes *kubernetes.ErrNoNodesAvailable
+	if errors.As(err, &noNodes) {
+		slog.Info("rejecting pod, no nodes available", "name", pod.Name, "generateName", pod.GenerateName, "namespace", pod.Namespace, "reason", err)
+		// Must be an explicit denial, an HTTP error would be admitted due to failurePolicy: Ignore
+		render.JSON(w, r, kubernetes.EncodeRejection(review, "spale: "+err.Error()))
+		return
+	}
 	if err != nil {
 		slog.Error("failed to generate patches for pod", "err", err)
 		http.Error(w, "failed to generate patches for pod", http.StatusInternalServerError)

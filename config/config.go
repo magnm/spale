@@ -11,6 +11,8 @@ type Config struct {
 	SpotNodeLabels      []string `env:"SPOT_NODE_LABELS" envDefault:"nodepool=spot"`
 	SpotNodeTolerations []string `env:"SPOT_NODE_TOLERATIONS" envDefault:"type=spot:NoSchedule"`
 	SpotRatio           string   `env:"SPOT_RATIO" envDefault:"3:1"`
+	// 0 disables the per-node startup throttle
+	MaxStartingPodsPerNode int `env:"MAX_STARTING_PODS_PER_NODE" envDefault:"2"`
 }
 
 // Initialised by server/run.go
