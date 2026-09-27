@@ -54,6 +54,13 @@ func patchesForPod(pod *corev1.Pod, dryRun bool) ([]kubernetes.PatchOperation, e
 			logger.Error("failed to get siblings of pod", "err", err)
 			return nil, err
 		}
+	} else {
+		annotations = kubernetes.DecodeAnnotations(pod.Annotations)
+		if !annotations.Force {
+			logger.Debug("pod not owned by a deployment, ignoring pod")
+			return patches, nil
+		}
+		siblings = append(siblings, *pod)
 	}
 
 	if len(siblings) == 0 {

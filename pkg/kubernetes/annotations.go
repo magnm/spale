@@ -14,6 +14,7 @@ import (
 const (
 	AnnotationRatio       string = "spale/ratio"
 	AnnotationIgnore      string = "spale/ignore"
+	AnnotationForce       string = "spale/force"
 	AnnotationOptIn       string = "spale/opt-in"
 	AnnotationNodeLabels  string = "spale/node-labels"
 	AnnotationTolerations string = "spale/tolerations"
@@ -22,6 +23,7 @@ const (
 type Annotations struct {
 	Ratio           string
 	Ignore          bool
+	Force           bool
 	OptIn           bool
 	NodeLabels      []string
 	NodeTolerations []string
@@ -47,6 +49,7 @@ func DecodeAnnotations(annotations map[string]string) *Annotations {
 		Ratio:           ratio,
 		Ignore:          annotations[AnnotationIgnore] == "true",
 		OptIn:           annotations[AnnotationOptIn] == "true",
+		Force:           annotations[AnnotationForce] == "true",
 		NodeLabels:      nodeLabels,
 		NodeTolerations: nodeTolerations,
 	}
