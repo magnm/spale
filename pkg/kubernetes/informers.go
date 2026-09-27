@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	resourcehelper "k8s.io/component-helpers/resource"
 )
 
 const LabelManaged = "spale/managed"
@@ -88,13 +89,12 @@ func trimPod(obj any) (any, error) {
 	if v, ok := pod.Labels[LabelManaged]; ok {
 		podLabels = map[string]string{LabelManaged: v}
 	}
-	containers := make([]corev1.Container, len(pod.Spec.Containers))
-	for i, c := range pod.Spec.Containers {
-		containers[i] = corev1.Container{Name: c.Name, Resources: c.Resources}
-	}
-	initContainers := make([]corev1.Container, len(pod.Spec.InitContainers))
-	for i, c := range pod.Spec.InitContainers {
-		initContainers[i] = corev1.Container{Name: c.Name, Resources: c.Resources, RestartPolicy: c.RestartPolicy}
+	var conditions []corev1.PodCondition
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady {
+			conditions = []corev1.PodCondition{{Type: c.Type, Status: c.Status}}
+			break
+		}
 	}
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -106,15 +106,17 @@ func trimPod(obj any) (any, error) {
 			DeletionTimestamp: pod.DeletionTimestamp,
 		},
 		Spec: corev1.PodSpec{
-			NodeName:       pod.Spec.NodeName,
-			Overhead:       pod.Spec.Overhead,
-			Resources:      pod.Spec.Resources,
-			Containers:     containers,
-			InitContainers: initContainers,
+			NodeName: pod.Spec.NodeName,
+			// Effective pod requests collapsed into one synthetic container
+			Containers: []corev1.Container{{
+				Resources: corev1.ResourceRequirements{
+					Requests: resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{}),
+				},
+			}},
 		},
 		Status: corev1.PodStatus{
 			Phase:      pod.Status.Phase,
-			Conditions: pod.Status.Conditions,
+			Conditions: conditions,
 		},
 	}, nil
 }
